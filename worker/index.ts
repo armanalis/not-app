@@ -3,9 +3,11 @@ import {
   catchUpOccurrence,
   nextNotifyAt,
   nextOccurrence,
+  normalizeEveryHours,
   normalizeSettings,
   reminderBody,
   safeTimeZone,
+  type NotifyRule,
   type Repeat,
   type Settings,
 } from "../shared/schedule";
@@ -25,6 +27,8 @@ type TodoRow = {
   deadline: number | null;
   repeat: string | null;
   done: number;
+  notify_at: number | null;
+  notify_every_h: number | null;
   next_notify_at: number | null;
   created_at: number;
 };
@@ -45,8 +49,15 @@ const toTodo = (r: TodoRow): Todo => ({
   deadline: r.deadline,
   repeat: (r.repeat as Repeat) ?? null,
   done: r.done === 1,
+  notifyAt: r.notify_at,
+  notifyEveryHours: r.notify_every_h,
   nextNotifyAt: r.done === 1 ? null : r.next_notify_at,
   createdAt: r.created_at,
+});
+
+const ruleOf = (t: { notifyAt: number | null; notifyEveryHours: number | null }): NotifyRule => ({
+  notifyAt: t.notifyAt,
+  everyHours: t.notifyEveryHours,
 });
 
 function validDeviceId(id: string | null): id is string {
@@ -57,6 +68,15 @@ function parseDeadline(v: unknown): number | null | undefined {
   if (v === null) return null;
   if (typeof v === "number" && Number.isFinite(v) && v > 0) return Math.floor(v);
   return undefined;
+}
+
+/** Kesin bildirim saati: null = kademeli varsayılan. */
+const parseNotifyAt = parseDeadline;
+
+/** Sabit tekrar aralığı: null = kademeli varsayılan. */
+function parseEveryHours(v: unknown): number | null | undefined {
+  if (v === null || v === undefined) return null;
+  return normalizeEveryHours(v) ?? undefined;
 }
 
 type ListRow = { id: string; tz: string; quiet_start: number; quiet_end: number; intensity: string };
@@ -172,7 +192,7 @@ async function handleApi(req: Request, env: Env, url: URL): Promise<Response> {
       .filter((t) => !t.done)
       .map((t) =>
         env.DB.prepare("UPDATE todos SET next_notify_at = ? WHERE id = ?").bind(
-          nextNotifyAt(t.deadline, now, merged),
+          nextNotifyAt(t.deadline, now, merged, ruleOf(t)),
           t.id,
         ),
       );
@@ -254,14 +274,24 @@ async function handleApi(req: Request, env: Env, url: URL): Promise<Response> {
   }
 
   if (path === "/api/todos" && req.method === "POST") {
-    const body = (await req.json().catch(() => ({}))) as { title?: unknown; deadline?: unknown; repeat?: unknown };
+    const body = (await req.json().catch(() => ({}))) as {
+      title?: unknown;
+      deadline?: unknown;
+      repeat?: unknown;
+      notifyAt?: unknown;
+      notifyEveryHours?: unknown;
+    };
     const title = typeof body.title === "string" ? body.title.trim().slice(0, MAX_TITLE) : "";
     const deadline = parseDeadline(body.deadline ?? null);
     const repeat = parseRepeat(body.repeat);
+    const notifyAt = parseNotifyAt(body.notifyAt ?? null);
+    const everyHours = parseEveryHours(body.notifyEveryHours);
     if (!title) return json({ error: t(lang, "errTitleEmpty") }, 400);
     if (deadline === undefined) return json({ error: t(lang, "errDeadline") }, 400);
     if (repeat === undefined) return json({ error: t(lang, "errRepeat") }, 400);
     if (repeat && deadline === null) return json({ error: t(lang, "errRepeatNeedsDate") }, 400);
+    if (notifyAt === undefined) return json({ error: t(lang, "errNotifyAt") }, 400);
+    if (everyHours === undefined) return json({ error: t(lang, "errNotifyEvery") }, 400);
 
     const { listId, settings } = await ensureDevice(env, deviceId);
     const count = await env.DB.prepare("SELECT COUNT(*) AS n FROM todos WHERE list_id = ?")
@@ -271,11 +301,23 @@ async function handleApi(req: Request, env: Env, url: URL): Promise<Response> {
 
     const now = Date.now();
     const id = newId();
+    const rule = { notifyAt, everyHours };
     await env.DB.prepare(
-      `INSERT INTO todos (id, device_id, list_id, title, deadline, repeat, done, next_notify_at, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)`,
+      `INSERT INTO todos (id, device_id, list_id, title, deadline, repeat, done, notify_at, notify_every_h, next_notify_at, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)`,
     )
-      .bind(id, deviceId, listId, title, deadline, repeat, nextNotifyAt(deadline, now, settings), now)
+      .bind(
+        id,
+        deviceId,
+        listId,
+        title,
+        deadline,
+        repeat,
+        notifyAt,
+        everyHours,
+        nextNotifyAt(deadline, now, settings, rule),
+        now,
+      )
       .run();
     return json(await getTodo(env, listId, id), 201);
   }
@@ -299,6 +341,8 @@ async function handleApi(req: Request, env: Env, url: URL): Promise<Response> {
         repeat?: unknown;
         done?: unknown;
         snoozeMinutes?: unknown;
+        notifyAt?: unknown;
+        notifyEveryHours?: unknown;
       };
       const now = Date.now();
 
@@ -314,23 +358,37 @@ async function handleApi(req: Request, env: Env, url: URL): Promise<Response> {
       const title = typeof body.title === "string" ? body.title.trim().slice(0, MAX_TITLE) : existing.title;
       let deadline = "deadline" in body ? parseDeadline(body.deadline) : existing.deadline;
       const repeat = "repeat" in body ? parseRepeat(body.repeat) : existing.repeat;
+      let notifyAt = "notifyAt" in body ? parseNotifyAt(body.notifyAt) : existing.notifyAt;
+      const everyHours =
+        "notifyEveryHours" in body ? parseEveryHours(body.notifyEveryHours) : existing.notifyEveryHours;
       let done = typeof body.done === "boolean" ? body.done : existing.done;
       if (!title) return json({ error: t(lang, "errTitleEmpty") }, 400);
       if (deadline === undefined) return json({ error: t(lang, "errDeadline") }, 400);
       if (repeat === undefined) return json({ error: t(lang, "errRepeat") }, 400);
+      if (notifyAt === undefined) return json({ error: t(lang, "errNotifyAt") }, 400);
+      if (everyHours === undefined) return json({ error: t(lang, "errNotifyEvery") }, 400);
 
       // Tekrarlayan görev tamamlanınca bir sonraki tarihe atlar, listede kalır.
       if (done && repeat && deadline !== null) {
-        deadline = catchUpOccurrence(nextOccurrence(deadline, repeat, settings.tz), repeat, now, settings.tz);
+        const rolled = catchUpOccurrence(nextOccurrence(deadline, repeat, settings.tz), repeat, now, settings.tz);
+        // Kesin bildirim saati de deadline ile aynı kadar ileri kayar.
+        if (notifyAt !== null) notifyAt += rolled - deadline;
+        deadline = rolled;
         done = false;
       }
 
-      const scheduleChanged = deadline !== existing.deadline || (existing.done && !done);
-      const next = done ? null : scheduleChanged ? nextNotifyAt(deadline, now, settings) : existing.nextNotifyAt;
+      const scheduleChanged =
+        deadline !== existing.deadline ||
+        notifyAt !== existing.notifyAt ||
+        everyHours !== existing.notifyEveryHours ||
+        (existing.done && !done);
+      const rule = { notifyAt, everyHours };
+      const next = done ? null : scheduleChanged ? nextNotifyAt(deadline, now, settings, rule) : existing.nextNotifyAt;
       await env.DB.prepare(
-        "UPDATE todos SET title = ?, deadline = ?, repeat = ?, done = ?, next_notify_at = ? WHERE id = ? AND list_id = ?",
+        `UPDATE todos SET title = ?, deadline = ?, repeat = ?, done = ?, notify_at = ?, notify_every_h = ?,
+         next_notify_at = ? WHERE id = ? AND list_id = ?`,
       )
-        .bind(title, deadline, repeat, done ? 1 : 0, next, id, listId)
+        .bind(title, deadline, repeat, done ? 1 : 0, notifyAt, everyHours, next, id, listId)
         .run();
       return json(await getTodo(env, listId, id));
     }
@@ -397,7 +455,8 @@ async function sendDueReminders(env: Env) {
       // Başarısız olsa da sonraki zamana geçilir; aksi halde her dakika tekrar denenir.
       updates.push(
         env.DB.prepare("UPDATE todos SET next_notify_at = ?, last_notified_at = ? WHERE id = ?").bind(
-          nextNotifyAt(todo.deadline, now, settings),
+          // notify_at geçtiyse kendiliğinden devre dışı kalır; sonrası sabit aralık ya da kademeli kural.
+          nextNotifyAt(todo.deadline, now, settings, { notifyAt: todo.notify_at, everyHours: todo.notify_every_h }),
           now,
           todo.id,
         ),

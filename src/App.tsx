@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type
 import { LANGS, LANG_LABELS, t as translate, type Lang } from "../shared/i18n";
 import {
   DEFAULT_SETTINGS,
+  EVERY_HOURS_CHOICES,
   HOUR,
   MINUTE,
   dayKey,
@@ -11,7 +12,7 @@ import {
   type Repeat,
 } from "../shared/schedule";
 import type { ListSettings, Todo } from "../shared/types";
-import { api, getLang, setLang, timeZone, type TodoPatch } from "./api";
+import { api, getLang, setLang, timeZone, type NewTodo, type TodoPatch } from "./api";
 import { currentPushState, enablePush, isIOS, syncSubscription, type PushState } from "./push";
 import { applyTheme, getTheme, type Theme } from "./theme";
 
@@ -35,6 +36,14 @@ const atHour = (daysAhead: number, hour: number) => {
 
 /** Bugün 18:00 geçtiyse yarın 18:00. */
 const eveningPreset = () => (new Date().getHours() >= 18 ? atHour(1, 18) : atHour(0, 18));
+
+/** "Belirli saat" seçilince açılış değeri: bir sonraki tam saat. */
+const nextFullHour = () => {
+  const d = new Date();
+  d.setMinutes(0, 0, 0);
+  d.setHours(d.getHours() + 1);
+  return d.getTime();
+};
 
 export default function App() {
   const [todos, setTodos] = useState<Todo[] | null>(null);
@@ -159,9 +168,9 @@ export default function App() {
 
       <AddForm
         t={t}
-        onAdd={(title, deadline, repeat) =>
+        onAdd={(draft) =>
           run(async () => {
-            const todo = await api.create(title, deadline, repeat);
+            const todo = await api.create(draft);
             setTodos((prev) => [...(prev ?? []), todo]);
           })
         }
@@ -357,6 +366,9 @@ function TodoCard({
             </span>
           )}
           {todo.repeat && <span className="tag">🔁&nbsp;{t(todo.repeat)}</span>}
+          {todo.notifyEveryHours !== null && (
+            <span className="tag">⏱&nbsp;{t("tagEvery", { n: todo.notifyEveryHours })}</span>
+          )}
           {!todo.done && todo.nextNotifyAt !== null && (
             <span className="tag">🔔&nbsp;{formatClock(Math.max(todo.nextNotifyAt, now), tz, now, lang)}</span>
           )}
@@ -488,16 +500,95 @@ function RepeatPicker({
   );
 }
 
+/** Not başına bildirim saati ve tekrar aralığı. İkisi de boşsa kademeli varsayılan işler. */
+function NotifyPicker({
+  notifyAt,
+  everyHours,
+  now,
+  t,
+  onChange,
+}: {
+  notifyAt: number | null;
+  everyHours: number | null;
+  now: number;
+  t: T;
+  onChange: (v: { notifyAt: number | null; everyHours: number | null }) => void;
+}) {
+  return (
+    <>
+      <span className="field-label">{t("notifyLabel")}</span>
+      <div className="chips">
+        <button
+          type="button"
+          className={`chip ${notifyAt === null ? "on" : ""}`}
+          onClick={() => onChange({ notifyAt: null, everyHours })}
+        >
+          {t("notifyAuto")}
+        </button>
+        <button
+          type="button"
+          className={`chip ${notifyAt !== null ? "on" : ""}`}
+          onClick={() => onChange({ notifyAt: notifyAt ?? nextFullHour(), everyHours })}
+        >
+          {t("notifyExact")}
+        </button>
+      </div>
+
+      {notifyAt !== null && (
+        <>
+          <input
+            className="date-input"
+            type="datetime-local"
+            value={toLocalInput(notifyAt)}
+            onChange={(e) => {
+              const ts = new Date(e.target.value).getTime();
+              if (!Number.isNaN(ts)) onChange({ notifyAt: ts, everyHours });
+            }}
+            aria-label={t("notifyAtAria")}
+          />
+          <p className={`hint ${notifyAt <= now ? "hint-warn" : ""}`}>
+            {notifyAt <= now ? t("notifyPast") : t("notifyAtHint")}
+          </p>
+        </>
+      )}
+
+      <span className="field-label">{t("everyLabel")}</span>
+      <div className="chips">
+        <button
+          type="button"
+          className={`chip ${everyHours === null ? "on" : ""}`}
+          onClick={() => onChange({ notifyAt, everyHours: null })}
+        >
+          {t("everyAuto")}
+        </button>
+        {EVERY_HOURS_CHOICES.map((h) => (
+          <button
+            key={h}
+            type="button"
+            className={`chip ${everyHours === h ? "on" : ""}`}
+            onClick={() => onChange({ notifyAt, everyHours: h })}
+          >
+            {t("everyHours", { n: h })}
+          </button>
+        ))}
+      </div>
+      <p className="hint">{everyHours === null ? t("autoHint") : t("everyHint")}</p>
+    </>
+  );
+}
+
 function AddForm({
   t,
   onAdd,
 }: {
   t: T;
-  onAdd: (title: string, deadline: number | null, repeat: Repeat) => Promise<void>;
+  onAdd: (draft: NewTodo) => Promise<void>;
 }) {
   const [title, setTitle] = useState("");
   const [deadline, setDeadline] = useState<number | null>(null);
   const [repeat, setRepeat] = useState<Repeat>(null);
+  const [notifyAt, setNotifyAt] = useState<number | null>(null);
+  const [everyHours, setEveryHours] = useState<number | null>(null);
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
 
@@ -505,11 +596,19 @@ function AddForm({
     e.preventDefault();
     if (!title.trim() || busy) return;
     setBusy(true);
-    await onAdd(title.trim(), deadline, deadline === null ? null : repeat);
+    await onAdd({
+      title: title.trim(),
+      deadline,
+      repeat: deadline === null ? null : repeat,
+      notifyAt,
+      notifyEveryHours: everyHours,
+    });
     setBusy(false);
     setTitle("");
     setDeadline(null);
     setRepeat(null);
+    setNotifyAt(null);
+    setEveryHours(null);
     setOpen(false);
   };
 
@@ -531,7 +630,7 @@ function AddForm({
         </button>
       </div>
 
-      {(open || deadline !== null) && (
+      {(open || deadline !== null || notifyAt !== null || everyHours !== null) && (
         <div className="add-options">
           <DeadlinePicker
             value={deadline}
@@ -542,6 +641,16 @@ function AddForm({
             }}
           />
           {deadline !== null && <RepeatPicker value={repeat} disabled={false} t={t} onChange={setRepeat} />}
+          <NotifyPicker
+            notifyAt={notifyAt}
+            everyHours={everyHours}
+            now={Date.now()}
+            t={t}
+            onChange={(v) => {
+              setNotifyAt(v.notifyAt);
+              setEveryHours(v.everyHours);
+            }}
+          />
         </div>
       )}
     </form>
@@ -612,9 +721,16 @@ function EditSheet({
   const [title, setTitle] = useState(todo.title);
   const [deadline, setDeadline] = useState<number | null>(todo.deadline);
   const [repeat, setRepeat] = useState<Repeat>(todo.repeat);
+  const [notifyAt, setNotifyAt] = useState<number | null>(todo.notifyAt);
+  const [everyHours, setEveryHours] = useState<number | null>(todo.notifyEveryHours);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
-  const changed = title.trim() !== todo.title || deadline !== todo.deadline || repeat !== todo.repeat;
+  const changed =
+    title.trim() !== todo.title ||
+    deadline !== todo.deadline ||
+    repeat !== todo.repeat ||
+    notifyAt !== todo.notifyAt ||
+    everyHours !== todo.notifyEveryHours;
 
   return (
     <div className="sheet-body">
@@ -639,6 +755,17 @@ function EditSheet({
       <span className="field-label">{t("repeatLabel")}</span>
       <RepeatPicker value={repeat} disabled={deadline === null} t={t} onChange={setRepeat} />
       {deadline === null && <p className="hint">{t("needDate")}</p>}
+
+      <NotifyPicker
+        notifyAt={notifyAt}
+        everyHours={everyHours}
+        now={now}
+        t={t}
+        onChange={(v) => {
+          setNotifyAt(v.notifyAt);
+          setEveryHours(v.everyHours);
+        }}
+      />
 
       {!todo.done && (
         <>
@@ -685,7 +812,7 @@ function EditSheet({
           className="primary"
           disabled={!changed || !title.trim()}
           onClick={async () => {
-            await onPatch({ title: title.trim(), deadline, repeat });
+            await onPatch({ title: title.trim(), deadline, repeat, notifyAt, notifyEveryHours: everyHours });
             onClose();
           }}
         >

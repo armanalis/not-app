@@ -481,6 +481,10 @@ select:focus {
   color: var(--muted);
 }
 
+.hint-warn {
+  color: var(--late);
+}
+
 .ok {
   color: var(--ok);
   font-size: 14px;

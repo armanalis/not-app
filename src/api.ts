@@ -66,6 +66,17 @@ export type TodoPatch = {
   repeat?: Repeat;
   done?: boolean;
   snoozeMinutes?: number;
+  notifyAt?: number | null;
+  notifyEveryHours?: number | null;
+};
+
+/** Yeni not alanları. */
+export type NewTodo = {
+  title: string;
+  deadline: number | null;
+  repeat: Repeat;
+  notifyAt: number | null;
+  notifyEveryHours: number | null;
 };
 
 export const api = {
@@ -77,8 +88,7 @@ export const api = {
     }),
   testPush: () => request<{ result: string }>("/api/test-push", { method: "POST" }),
   list: () => request<Todo[]>("/api/todos"),
-  create: (title: string, deadline: number | null, repeat: Repeat) =>
-    request<Todo>("/api/todos", { method: "POST", body: JSON.stringify({ title, deadline, repeat }) }),
+  create: (todo: NewTodo) => request<Todo>("/api/todos", { method: "POST", body: JSON.stringify(todo) }),
   update: (id: string, patch: TodoPatch) =>
     request<Todo>(`/api/todos/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
   remove: (id: string) => request(`/api/todos/${id}`, { method: "DELETE" }),

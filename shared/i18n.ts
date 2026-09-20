@@ -44,6 +44,18 @@ const tr: Dict = {
   weekdays: "Hafta içi",
   weekly: "Her hafta",
 
+  notifyLabel: "Bildirim saati",
+  notifyAuto: "Otomatik",
+  notifyExact: "Belirli saat",
+  notifyAtAria: "Bildirim tarihi ve saati",
+  notifyAtHint: "Bu saatte kesin bildirim gider; sessiz saatler bile engellemez.",
+  everyLabel: "Tekrar sıklığı",
+  everyAuto: "Otomatik",
+  everyHours: "{n} saatte bir",
+  everyHint: "İlk bildirimden sonra bu aralıkla tekrarlar.",
+  autoHint: "Otomatik: son tarih yaklaştıkça sıklaşır.",
+  notifyPast: "Seçtiğin saat geçmişte kaldı.",
+
   groupOverdue: "Gecikmiş",
   groupToday: "Bugün",
   groupTomorrow: "Yarın",
@@ -53,6 +65,7 @@ const tr: Dict = {
 
   markDone: "Tamamlandı işaretle",
   undo: "Geri al",
+  tagEvery: "{n} sa'te bir",
   overdueBy: "Gecikti · {d} önce",
   remaining: "{clock} · {d} kaldı",
 
@@ -114,6 +127,8 @@ const tr: Dict = {
   errDeadline: "Geçersiz tarih",
   errRepeat: "Geçersiz tekrar",
   errRepeatNeedsDate: "Tekrar için tarih gerekli",
+  errNotifyAt: "Geçersiz bildirim saati",
+  errNotifyEvery: "Geçersiz tekrar sıklığı",
   errTooMany: "Çok fazla not var",
   errNotFound: "Bulunamadı",
   errSettings: "Geçersiz ayar",
@@ -166,6 +181,18 @@ const en: Dict = {
   weekdays: "Weekdays",
   weekly: "Every week",
 
+  notifyLabel: "Reminder time",
+  notifyAuto: "Automatic",
+  notifyExact: "Exact time",
+  notifyAtAria: "Reminder date and time",
+  notifyAtHint: "The reminder fires exactly then — quiet hours won't hold it back.",
+  everyLabel: "Repeat every",
+  everyAuto: "Automatic",
+  everyHours: "Every {n} h",
+  everyHint: "After the first reminder it repeats at this interval.",
+  autoHint: "Automatic: reminders get closer together as the deadline nears.",
+  notifyPast: "That time is already in the past.",
+
   groupOverdue: "Overdue",
   groupToday: "Today",
   groupTomorrow: "Tomorrow",
@@ -175,6 +202,7 @@ const en: Dict = {
 
   markDone: "Mark as done",
   undo: "Undo",
+  tagEvery: "every {n} h",
   overdueBy: "Overdue · {d} ago",
   remaining: "{clock} · {d} left",
 
@@ -234,6 +262,8 @@ const en: Dict = {
   errDeadline: "Invalid date",
   errRepeat: "Invalid repeat",
   errRepeatNeedsDate: "A repeat needs a date",
+  errNotifyAt: "Invalid reminder time",
+  errNotifyEvery: "Invalid repeat interval",
   errTooMany: "Too many notes",
   errNotFound: "Not found",
   errSettings: "Invalid setting",

@@ -6,6 +6,10 @@ export type Todo = {
   deadline: number | null;
   repeat: Repeat;
   done: boolean;
+  /** Kullanıcının seçtiği ilk bildirim anı; yoksa kademeli kural. */
+  notifyAt: number | null;
+  /** Sabit tekrar aralığı (saat); yoksa kademeli kural. */
+  notifyEveryHours: number | null;
   nextNotifyAt: number | null;
   createdAt: number;
 };

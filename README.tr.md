@@ -42,6 +42,15 @@ Sonraki güncellemeler için sadece `npm run deploy`.
 
 23:00–08:00 sessiz (kullanıcının saat dilimine göre). Kural: `shared/schedule.ts`.
 
+### Nota özel ayar
+
+Yukarıdaki tablo varsayılandır. Her not, ekleme formundan ya da düzenleme panelinden bunu geçersiz kılabilir:
+
+- **Bildirim saati** — ilk bildirimin gideceği kesin anı seç. Tam o anda gider, sessiz saatler bile engellemez. O an geçtikten sonra not kendi tekrar aralığına (ya da tabloya) döner.
+- **Tekrar sıklığı** — kademeli kural yerine sabit aralık (1, 2, 3, 6, 12 veya 24 saat). Sessiz saatler burada işler: geceye denk gelen bir tekrar sabaha kayar.
+
+İkisi de **Otomatik** kalırsa not tablodaki gibi davranır. Hiçbiri son tarih istemez — tarihsiz bir notun da kesin bildirim saati olabilir.
+
 ## Dil ve tema
 
 Ayarlar panelinden Türkçe / English ve Sistem / Açık / Koyu seçilir. İlk açılışta tarayıcı diline göre başlar.

@@ -7,6 +7,22 @@ export const HOUR = 60 * MINUTE;
 export type Intensity = "calm" | "normal" | "insistent";
 export type Repeat = "daily" | "weekdays" | "weekly" | null;
 
+/** Bir notun kendi bildirim tercihi. Boş alanlar kademeli varsayılana düşer. */
+export type NotifyRule = {
+  /** Kullanıcının seçtiği ilk bildirim anı. Geçmişte kaldıysa yok sayılır. */
+  notifyAt?: number | null;
+  /** Sabit tekrar aralığı (saat). Yoksa kalan süreye göre kademelenir. */
+  everyHours?: number | null;
+};
+
+/** Arayüzdeki "kaç saatte bir" seçenekleri. */
+export const EVERY_HOURS_CHOICES = [1, 2, 3, 6, 12, 24] as const;
+export const MAX_EVERY_HOURS = 168; // 1 hafta
+
+export function normalizeEveryHours(v: unknown): number | null {
+  return typeof v === "number" && Number.isInteger(v) && v >= 1 && v <= MAX_EVERY_HOURS ? v : null;
+}
+
 export type Settings = {
   tz: string;
   quietStart: number; // yerel saat, 0-23
@@ -104,10 +120,24 @@ export function quietEnd(ts: number, s: Settings): number {
 }
 
 /** `after` anından sonra gönderilecek bir sonraki bildirimin zamanı. */
-export function nextNotifyAt(deadline: number | null, after: number, settings: Partial<Settings>): number {
+export function nextNotifyAt(
+  deadline: number | null,
+  after: number,
+  settings: Partial<Settings>,
+  rule: NotifyRule = {},
+): number {
   const s = normalizeSettings(settings);
+
+  // Kullanıcı kesin bir saat seçtiyse o saat aynen kullanılır; sessiz saat bile bozmaz.
+  if (rule.notifyAt != null && rule.notifyAt > after) return rule.notifyAt;
+
+  const everyHours = normalizeEveryHours(rule.everyHours);
   let next: number;
-  if (deadline === null || after >= deadline) {
+  if (everyHours !== null) {
+    next = after + everyHours * HOUR;
+    // Deadline aralığın içine düşüyorsa o anda da bir bildirim gitsin.
+    if (deadline !== null && deadline > after && deadline < next) next = deadline;
+  } else if (deadline === null || after >= deadline) {
     next = after + intervalFor(null, s.intensity);
   } else {
     // Deadline anında da bir bildirim gitsin.

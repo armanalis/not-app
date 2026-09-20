@@ -7,6 +7,7 @@ import {
   intervalFor,
   nextNotifyAt,
   nextOccurrence,
+  normalizeEveryHours,
   normalizeSettings,
   reminderBody,
 } from "./schedule";
@@ -137,5 +138,45 @@ describe("reminderBody", () => {
     expect(reminderBody(ist(16, 18), ist(16, 15, 45), TZ)).toBe("⏳ 2 sa 15 dk kaldı · son: 18:00");
     expect(reminderBody(ist(16, 18), ist(16, 18), TZ)).toContain("şimdi doldu");
     expect(reminderBody(ist(16, 18), ist(16, 20), TZ)).toContain("Gecikti");
+  });
+});
+
+describe("normalizeEveryHours", () => {
+  it("1-168 saat arası tam sayıları kabul eder", () => {
+    expect(normalizeEveryHours(3)).toBe(3);
+    expect(normalizeEveryHours(168)).toBe(168);
+    expect(normalizeEveryHours(0)).toBeNull();
+    expect(normalizeEveryHours(169)).toBeNull();
+    expect(normalizeEveryHours(1.5)).toBeNull();
+    expect(normalizeEveryHours("3")).toBeNull();
+    expect(normalizeEveryHours(null)).toBeNull();
+  });
+});
+
+describe("nextNotifyAt — nota özel kural", () => {
+  it("seçilen kesin saati aynen kullanır", () => {
+    expect(nextNotifyAt(null, ist(16, 10), S, { notifyAt: ist(16, 14, 30) })).toBe(ist(16, 14, 30));
+  });
+
+  it("kesin saat sessiz saatte olsa bile ertelenmez", () => {
+    expect(nextNotifyAt(null, ist(16, 20), S, { notifyAt: ist(17, 3) })).toBe(ist(17, 3));
+  });
+
+  it("kesin saat geçtiyse yok sayılır, sabit aralığa düşer", () => {
+    expect(nextNotifyAt(null, ist(16, 15), S, { notifyAt: ist(16, 10), everyHours: 3 })).toBe(ist(16, 18));
+  });
+
+  it("sabit aralık kademeli kuralın yerine geçer", () => {
+    // Kademeli olsaydı 30 dk'da 1 olurdu; sabit aralık 6 saat.
+    expect(nextNotifyAt(ist(16, 11), ist(16, 10), S, { everyHours: 6 })).toBe(ist(16, 11));
+    expect(nextNotifyAt(null, ist(16, 10), S, { everyHours: 6 })).toBe(ist(16, 16));
+  });
+
+  it("sabit aralık sessiz saate denk gelirse sabaha kayar", () => {
+    expect(nextNotifyAt(null, ist(16, 22), S, { everyHours: 3 })).toBe(ist(17, 8));
+  });
+
+  it("kural boşsa kademeli davranış değişmez", () => {
+    expect(nextNotifyAt(null, ist(16, 10), S, {})).toBe(nextNotifyAt(null, ist(16, 10), S));
   });
 });
