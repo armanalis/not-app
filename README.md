@@ -1,50 +1,55 @@
 # Hatırlatıcı
 
-Yapılacaklar için push bildirimi gönderen PWA. Cloudflare Workers + D1 üzerinde ücretsiz çalışır.
+**English** · [Türkçe](README.tr.md)
 
-## Yerelde çalıştırma
+A PWA that sends push notifications for your todos. Runs free on Cloudflare Workers + D1.
+
+Live: https://not-app.armanalis.workers.dev
+
+## Running locally
 
 ```bash
 npm install
-npm run vapid      # ilk seferde: VAPID anahtarları (.dev.vars + wrangler.jsonc)
-npm run db:local   # yerel veritabanı tabloları
+cp .dev.vars.example .dev.vars
+npm run vapid      # first time only: generates VAPID keys (.dev.vars + wrangler.jsonc)
+npm run db:local   # local database tables
 npm run dev        # http://localhost:5173
 ```
 
-Cron'u elle tetiklemek için: `curl http://localhost:5173/cdn-cgi/handler/scheduled`
+Trigger the cron by hand: `curl http://localhost:5173/cdn-cgi/handler/scheduled`
 
-Testler: `npm test`
+Tests: `npm test`
 
-## Yayına alma (bir kerelik)
+## Deploying (one-time setup)
 
 1. `npx wrangler login`
-2. `npx wrangler d1 create not-app-db` → çıkan `database_id`'yi `wrangler.jsonc` içine yaz
+2. `npx wrangler d1 create not-app-db` → copy the returned `database_id` into `wrangler.jsonc`
 3. `npm run db:remote`
-4. `npx wrangler secret put VAPID_PRIVATE_KEY` → `.dev.vars` içindeki değeri (tırnaklar olmadan) yapıştır
+4. `npx wrangler secret put VAPID_PRIVATE_KEY` → paste the value from `.dev.vars` (without quotes)
 5. `npm run deploy`
 
-Sonraki güncellemeler için sadece `npm run deploy`.
+After that, updates are just `npm run deploy`.
 
-## Bildirim kuralı
+## Notification schedule
 
-| Kalan süre | Sıklık |
+| Time remaining | Frequency |
 |---|---|
-| Deadline yok / > 6 saat | 2 saatte 1 |
-| 6 – 2 saat | saatte 1 |
-| 2 saat – 30 dk | 30 dk'da 1 |
-| < 30 dk | 10 dk'da 1 + deadline anında |
-| Süre geçti | 2 saatte 1 |
+| No deadline / > 6 hours | every 2 hours |
+| 6 – 2 hours | hourly |
+| 2 hours – 30 min | every 30 min |
+| < 30 min | every 10 min + at the deadline |
+| Overdue | every 2 hours |
 
-23:00–08:00 sessiz (kullanıcının saat dilimine göre). Kural: `shared/schedule.ts`.
+Quiet from 23:00–08:00 (in the user's own timezone). The rule lives in `shared/schedule.ts`.
 
-## Dil ve tema
+## Language and theme
 
-Ayarlar panelinden Türkçe / English ve Sistem / Açık / Koyu seçilir. İlk açılışta tarayıcı diline göre başlar.
-Dil seçimi bildirim metinlerini de kapsar: cihazın dili `devices.lang` sütununda saklanır, cron bildirimi o dilde gönderir.
-Metinler `shared/i18n.ts` içinde tek yerde durur.
+The settings panel offers Türkçe / English and System / Light / Dark. On first launch it follows the browser language.
 
-## Bilinen sınırlar
+The language choice covers notification text too: the device's language is stored in the `devices.lang` column, and the cron sends the notification in that language. All strings live in one place, `shared/i18n.ts`.
 
-- iPhone'da bildirim için Safari → Paylaş → **Ana Ekrana Ekle** gerekir (iOS 16.4+).
-- Notlar cihaza bağlıdır (giriş sistemi yok).
-- Cron dakikada en fazla 40 bildirim gönderir (ücretsiz plan istek sınırı).
+## Known limits
+
+- On iPhone, notifications require Safari → Share → **Add to Home Screen** (iOS 16.4+).
+- Notes are tied to the device (there is no login system).
+- The cron sends at most 40 notifications per minute (free-plan request limit).
