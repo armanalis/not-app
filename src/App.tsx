@@ -34,9 +34,6 @@ const atHour = (daysAhead: number, hour: number) => {
   return d.getTime();
 };
 
-/** Bugün 18:00 geçtiyse yarın 18:00. */
-const eveningPreset = () => (new Date().getHours() >= 18 ? atHour(1, 18) : atHour(0, 18));
-
 /** "Belirli saat" seçilince açılış değeri: bir sonraki tam saat. */
 const nextFullHour = () => {
   const d = new Date();
@@ -428,27 +425,19 @@ function DeadlinePicker({
   t: T;
   onChange: (v: number | null) => void;
 }) {
-  const presets: { label: string; value: number | null }[] = [
-    { label: t("noDate"), value: null },
-    { label: t("inOneHour"), value: Date.now() + HOUR },
-    { label: new Date().getHours() >= 18 ? t("tomorrowEvening") : t("todayEvening"), value: eveningPreset() },
-    { label: t("tomorrowMorning"), value: atHour(1, 9) },
-  ];
-  const selected = (p: number | null) => (p === null ? value === null : value !== null && Math.abs(p - value) < MINUTE);
-
   return (
     <>
       <div className="chips">
-        {presets.map((p) => (
-          <button
-            key={p.label}
-            type="button"
-            className={`chip ${selected(p.value) ? "on" : ""}`}
-            onClick={() => onChange(p.value)}
-          >
-            {p.label}
-          </button>
-        ))}
+        <button type="button" className={`chip ${value === null ? "on" : ""}`} onClick={() => onChange(null)}>
+          {t("noDate")}
+        </button>
+        <button
+          type="button"
+          className={`chip ${value !== null ? "on" : ""}`}
+          onClick={() => onChange(value ?? nextFullHour())}
+        >
+          {t("pickDate")}
+        </button>
       </div>
       {value !== null && (
         <input

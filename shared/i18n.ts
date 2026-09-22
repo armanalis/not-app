@@ -33,10 +33,7 @@ const tr: Dict = {
   todoAria: "Yapılacak",
 
   noDate: "Tarihsiz",
-  inOneHour: "1 saat",
-  todayEvening: "Bugün 18:00",
-  tomorrowEvening: "Yarın 18:00",
-  tomorrowMorning: "Yarın 09:00",
+  pickDate: "Tarih ve saat seç",
   dateTimeAria: "Tarih ve saat",
 
   noRepeat: "Tekrar yok",
@@ -170,10 +167,7 @@ const en: Dict = {
   todoAria: "To-do",
 
   noDate: "No date",
-  inOneHour: "1 hour",
-  todayEvening: "Today 18:00",
-  tomorrowEvening: "Tomorrow 18:00",
-  tomorrowMorning: "Tomorrow 09:00",
+  pickDate: "Pick date & time",
   dateTimeAria: "Date and time",
 
   noRepeat: "No repeat",
