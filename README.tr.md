@@ -44,12 +44,12 @@ Sonraki güncellemeler için sadece `npm run deploy`.
 
 ### Nota özel ayar
 
-Yukarıdaki tablo varsayılandır. Her not, ekleme formundan ya da düzenleme panelinden bunu geçersiz kılabilir:
+Yukarıdaki tablo varsayılandır. Her not bunu ekleme formundan ya da düzenleme panelinden değiştirebilir:
 
-- **Bildirim saati** — ilk bildirimin gideceği kesin anı seç. Tam o anda gider, sessiz saatler bile engellemez. O an geçtikten sonra not kendi tekrar aralığına (ya da tabloya) döner.
+- **Tarih ve saat** — notun tarihi varsa ilk bildirim tam o anda gider. Sessiz saatler bunu engellemez. Öncesinde kademeli hatırlatma gelmez.
 - **Tekrar sıklığı** — kademeli kural yerine sabit aralık (1, 2, 3, 6, 12 veya 24 saat). Sessiz saatler burada işler: geceye denk gelen bir tekrar sabaha kayar.
 
-İkisi de **Otomatik** kalırsa not tablodaki gibi davranır. Hiçbiri son tarih istemez — tarihsiz bir notun da kesin bildirim saati olabilir.
+Tarihsiz notlar ve tarihi değiştirilmemiş eski notlar tablodaki kurala uyar.
 
 ## Dil ve tema
 

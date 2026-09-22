@@ -27,14 +27,7 @@ type T = (key: Parameters<typeof translate>[1], params?: Record<string, string |
 
 const toLocalInput = (ts: number) => new Date(ts - new Date(ts).getTimezoneOffset() * MINUTE).toISOString().slice(0, 16);
 
-/**
- * Tarih değişince bildirim saati de ona eşlenir.
- * Kullanıcı ayrıca farklı bir bildirim saati seçtiyse ona dokunulmaz.
- */
-const syncNotifyAt = (prevDeadline: number | null, nextDeadline: number | null, notifyAt: number | null) =>
-  notifyAt === null || notifyAt === prevDeadline ? nextDeadline : notifyAt;
-
-/** "Belirli saat" seçilince açılış değeri: bir sonraki tam saat. */
+/** "Tarih ve saat seç" ilk açılışta: bir sonraki tam saat. */
 const nextFullHour = () => {
   const d = new Date();
   d.setMinutes(0, 0, 0);
@@ -485,79 +478,27 @@ function RepeatPicker({
   );
 }
 
-/** Not başına bildirim saati ve tekrar aralığı. İkisi de boşsa kademeli varsayılan işler. */
-function NotifyPicker({
-  notifyAt,
-  everyHours,
-  now,
-  t,
-  onChange,
-}: {
-  notifyAt: number | null;
-  everyHours: number | null;
-  now: number;
-  t: T;
-  onChange: (v: { notifyAt: number | null; everyHours: number | null }) => void;
-}) {
+/** Bildirimin kaç saatte bir tekrarlanacağı. Boşsa kademeli varsayılan işler. */
+function EveryPicker({ value, t, onChange }: { value: number | null; t: T; onChange: (v: number | null) => void }) {
   return (
     <>
-      <span className="field-label">{t("notifyLabel")}</span>
-      <div className="chips">
-        <button
-          type="button"
-          className={`chip ${notifyAt === null ? "on" : ""}`}
-          onClick={() => onChange({ notifyAt: null, everyHours })}
-        >
-          {t("notifyAuto")}
-        </button>
-        <button
-          type="button"
-          className={`chip ${notifyAt !== null ? "on" : ""}`}
-          onClick={() => onChange({ notifyAt: notifyAt ?? nextFullHour(), everyHours })}
-        >
-          {t("notifyExact")}
-        </button>
-      </div>
-
-      {notifyAt !== null && (
-        <>
-          <input
-            className="date-input"
-            type="datetime-local"
-            value={toLocalInput(notifyAt)}
-            onChange={(e) => {
-              const ts = new Date(e.target.value).getTime();
-              if (!Number.isNaN(ts)) onChange({ notifyAt: ts, everyHours });
-            }}
-            aria-label={t("notifyAtAria")}
-          />
-          <p className={`hint ${notifyAt <= now ? "hint-warn" : ""}`}>
-            {notifyAt <= now ? t("notifyPast") : t("notifyAtHint")}
-          </p>
-        </>
-      )}
-
       <span className="field-label">{t("everyLabel")}</span>
       <div className="chips">
-        <button
-          type="button"
-          className={`chip ${everyHours === null ? "on" : ""}`}
-          onClick={() => onChange({ notifyAt, everyHours: null })}
-        >
+        <button type="button" className={`chip ${value === null ? "on" : ""}`} onClick={() => onChange(null)}>
           {t("everyAuto")}
         </button>
         {EVERY_HOURS_CHOICES.map((h) => (
           <button
             key={h}
             type="button"
-            className={`chip ${everyHours === h ? "on" : ""}`}
-            onClick={() => onChange({ notifyAt, everyHours: h })}
+            className={`chip ${value === h ? "on" : ""}`}
+            onClick={() => onChange(h)}
           >
             {t("everyHours", { n: h })}
           </button>
         ))}
       </div>
-      <p className="hint">{everyHours === null ? t("autoHint") : t("everyHint")}</p>
+      <p className="hint">{value === null ? t("autoHint") : t("everyHint")}</p>
     </>
   );
 }
@@ -615,28 +556,19 @@ function AddForm({
         </button>
       </div>
 
-      {(open || deadline !== null || notifyAt !== null || everyHours !== null) && (
+      {(open || deadline !== null || everyHours !== null) && (
         <div className="add-options">
           <DeadlinePicker
             value={deadline}
             t={t}
             onChange={(v) => {
-              setNotifyAt(syncNotifyAt(deadline, v, notifyAt));
+              setNotifyAt(v);
               setDeadline(v);
               if (v === null) setRepeat(null);
             }}
           />
           {deadline !== null && <RepeatPicker value={repeat} disabled={false} t={t} onChange={setRepeat} />}
-          <NotifyPicker
-            notifyAt={notifyAt}
-            everyHours={everyHours}
-            now={Date.now()}
-            t={t}
-            onChange={(v) => {
-              setNotifyAt(v.notifyAt);
-              setEveryHours(v.everyHours);
-            }}
-          />
+          <EveryPicker value={everyHours} t={t} onChange={setEveryHours} />
         </div>
       )}
     </form>
@@ -733,7 +665,7 @@ function EditSheet({
         value={deadline}
         t={t}
         onChange={(v) => {
-          setNotifyAt(syncNotifyAt(deadline, v, notifyAt));
+          setNotifyAt(v);
           setDeadline(v);
           if (v === null) setRepeat(null);
         }}
@@ -743,16 +675,7 @@ function EditSheet({
       <RepeatPicker value={repeat} disabled={deadline === null} t={t} onChange={setRepeat} />
       {deadline === null && <p className="hint">{t("needDate")}</p>}
 
-      <NotifyPicker
-        notifyAt={notifyAt}
-        everyHours={everyHours}
-        now={now}
-        t={t}
-        onChange={(v) => {
-          setNotifyAt(v.notifyAt);
-          setEveryHours(v.everyHours);
-        }}
-      />
+      <EveryPicker value={everyHours} t={t} onChange={setEveryHours} />
 
       {!todo.done && (
         <>

@@ -44,12 +44,12 @@ Quiet from 23:00–08:00 (in the user's own timezone). The rule lives in `shared
 
 ### Per-note overrides
 
-The table above is the default. Each note can override it from the add form or the edit sheet:
+The table above is the default. Each note can change it from the add form or the edit sheet:
 
-- **Reminder time** — pick an exact moment for the first reminder. It fires precisely then, and quiet hours do not hold it back. Once it has passed, the note falls back to its repeat interval (or the table).
+- **Date and time** — when a note has a date, the first reminder fires exactly at that moment. Quiet hours don't hold it back. There are no earlier escalating reminders before it.
 - **Repeat every** — a fixed interval (1, 2, 3, 6, 12 or 24 hours) instead of the escalating tiers. Quiet hours still apply, so an interval landing at night moves to the morning.
 
-Leave both on **Automatic** and the note behaves exactly as the table describes. Neither needs a deadline — a note with no due date can still have an exact reminder time.
+Notes without a date, and older notes whose date hasn't been changed, follow the table.
 
 ## Language and theme
 
