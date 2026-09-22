@@ -27,12 +27,12 @@ type T = (key: Parameters<typeof translate>[1], params?: Record<string, string |
 
 const toLocalInput = (ts: number) => new Date(ts - new Date(ts).getTimezoneOffset() * MINUTE).toISOString().slice(0, 16);
 
-const atHour = (daysAhead: number, hour: number) => {
-  const d = new Date();
-  d.setDate(d.getDate() + daysAhead);
-  d.setHours(hour, 0, 0, 0);
-  return d.getTime();
-};
+/**
+ * Tarih değişince bildirim saati de ona eşlenir.
+ * Kullanıcı ayrıca farklı bir bildirim saati seçtiyse ona dokunulmaz.
+ */
+const syncNotifyAt = (prevDeadline: number | null, nextDeadline: number | null, notifyAt: number | null) =>
+  notifyAt === null || notifyAt === prevDeadline ? nextDeadline : notifyAt;
 
 /** "Belirli saat" seçilince açılış değeri: bir sonraki tam saat. */
 const nextFullHour = () => {
@@ -362,10 +362,6 @@ function TodoCard({
                   })}
             </span>
           )}
-          {todo.repeat && <span className="tag">🔁&nbsp;{t(todo.repeat)}</span>}
-          {todo.notifyEveryHours !== null && (
-            <span className="tag">⏱&nbsp;{t("tagEvery", { n: todo.notifyEveryHours })}</span>
-          )}
           {!todo.done && todo.nextNotifyAt !== null && (
             <span className="tag">🔔&nbsp;{formatClock(Math.max(todo.nextNotifyAt, now), tz, now, lang)}</span>
           )}
@@ -625,6 +621,7 @@ function AddForm({
             value={deadline}
             t={t}
             onChange={(v) => {
+              setNotifyAt(syncNotifyAt(deadline, v, notifyAt));
               setDeadline(v);
               if (v === null) setRepeat(null);
             }}
@@ -736,6 +733,7 @@ function EditSheet({
         value={deadline}
         t={t}
         onChange={(v) => {
+          setNotifyAt(syncNotifyAt(deadline, v, notifyAt));
           setDeadline(v);
           if (v === null) setRepeat(null);
         }}
@@ -764,7 +762,6 @@ function EditSheet({
               { label: t("snooze15"), min: 15 },
               { label: t("snooze60"), min: 60 },
               { label: t("snooze180"), min: 180 },
-              { label: t("snoozeMorning"), min: Math.max(15, Math.round((atHour(1, 9) - now) / MINUTE)) },
             ].map((s) => (
               <button
                 key={s.label}

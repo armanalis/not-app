@@ -62,7 +62,6 @@ const tr: Dict = {
 
   markDone: "Tamamlandı işaretle",
   undo: "Geri al",
-  tagEvery: "{n} sa'te bir",
   overdueBy: "Gecikti · {d} önce",
   remaining: "{clock} · {d} kaldı",
 
@@ -75,7 +74,6 @@ const tr: Dict = {
   snooze15: "15 dk",
   snooze60: "1 saat",
   snooze180: "3 saat",
-  snoozeMorning: "Yarın sabah",
   nextNotify: "Sonraki bildirim: {clock}",
   delete: "Sil",
   confirmDelete: "Silmeyi onayla",
@@ -196,7 +194,6 @@ const en: Dict = {
 
   markDone: "Mark as done",
   undo: "Undo",
-  tagEvery: "every {n} h",
   overdueBy: "Overdue · {d} ago",
   remaining: "{clock} · {d} left",
 
@@ -209,7 +206,6 @@ const en: Dict = {
   snooze15: "15 min",
   snooze60: "1 hour",
   snooze180: "3 hours",
-  snoozeMorning: "Tomorrow morning",
   nextNotify: "Next reminder: {clock}",
   delete: "Delete",
   confirmDelete: "Confirm delete",
