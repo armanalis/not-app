@@ -1,7 +1,78 @@
-// Service worker: sunucudan gelen push'ları bildirim olarak gösterir.
+// Service worker: push bildirimlerini gösterir ve uygulamayı çevrimdışı çalıştırır.
 
-self.addEventListener("install", () => self.skipWaiting());
-self.addEventListener("activate", (event) => event.waitUntil(self.clients.claim()));
+// Sürüm değişince eski önbellek silinir.
+const CACHE = "reminder-app-v1";
+// Uygulama kabuğu. Hash'li varlıklar ilk ziyarette kendiliğinden eklenir.
+const SHELL = ["/", "/manifest.webmanifest", "/favicon.svg", "/icon-192.png", "/icon-512.png"];
+
+self.addEventListener("install", (event) => {
+  event.waitUntil(
+    caches
+      .open(CACHE)
+      .then((c) => c.addAll(SHELL))
+      .catch(() => {})
+      .then(() => self.skipWaiting()),
+  );
+});
+
+self.addEventListener("activate", (event) => {
+  event.waitUntil(
+    caches
+      .keys()
+      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
+      .then(() => self.clients.claim()),
+  );
+});
+
+/** Ağ önce, başarılıysa önbelleğe yaz; ağ yoksa önbellekten ver. */
+async function networkFirst(request, fallbackKey) {
+  try {
+    const res = await fetch(request);
+    if (res.ok) {
+      const cache = await caches.open(CACHE);
+      cache.put(fallbackKey || request, res.clone());
+    }
+    return res;
+  } catch (err) {
+    const cached = await caches.match(fallbackKey || request);
+    if (cached) return cached;
+    throw err;
+  }
+}
+
+self.addEventListener("fetch", (event) => {
+  const { request } = event;
+  if (request.method !== "GET") return;
+  const url = new URL(request.url);
+  if (url.origin !== self.location.origin) return;
+
+  // Sayfa açılışı: ağ yoksa önbellekteki kabuk.
+  if (request.mode === "navigate") {
+    event.respondWith(networkFirst(request, "/"));
+    return;
+  }
+
+  // Not listesi: çevrimdışıyken en son kaydedilen hâli göster.
+  if (url.pathname === "/api/todos") {
+    event.respondWith(networkFirst(request));
+    return;
+  }
+
+  // Diğer API çağrıları önbelleğe alınmaz; çevrimdışıyken başarısız olmalı.
+  if (url.pathname.startsWith("/api/")) return;
+
+  // Statik varlıklar: önbellekte varsa oradan, yoksa ağdan alıp sakla.
+  event.respondWith(
+    caches.match(request).then(
+      (cached) =>
+        cached ||
+        fetch(request).then((res) => {
+          if (res.ok) caches.open(CACHE).then((c) => c.put(request, res.clone()));
+          return res;
+        }),
+    ),
+  );
+});
 
 self.addEventListener("push", (event) => {
   let payload = {};

@@ -4,7 +4,7 @@
 
 A PWA that sends push notifications for your todos. Runs free on Cloudflare Workers + D1.
 
-Live: https://not-app.armanalis.workers.dev
+Live: https://reminder-app.armanalis.workers.dev
 
 ## Running locally
 
@@ -18,12 +18,12 @@ npm run dev        # http://localhost:5173
 
 Trigger the cron by hand: `curl http://localhost:5173/cdn-cgi/handler/scheduled`
 
-Tests: `npm test`
+Tests: `npm test` — scheduling rules plus the API endpoints, which run against a real local D1.
 
 ## Deploying (one-time setup)
 
 1. `npx wrangler login`
-2. `npx wrangler d1 create not-app-db` → copy the returned `database_id` into `wrangler.jsonc`
+2. `npx wrangler d1 create reminder-app-db` → copy the returned `database_id` into `wrangler.jsonc`
 3. `npm run db:remote`
 4. `npx wrangler secret put VAPID_PRIVATE_KEY` → paste the value from `.dev.vars` (without quotes)
 5. `npm run deploy`
@@ -57,8 +57,26 @@ The settings panel offers Türkçe / English and System / Light / Dark. On first
 
 The language choice covers notification text too: the device's language is stored in the `devices.lang` column, and the cron sends the notification in that language. All strings live in one place, `shared/i18n.ts`.
 
+## Keeping and finding notes
+
+**Recovery code.** Settings → Recovery code gives a permanent 16-character code for your list. Entering it on another device moves that device onto the list. It is the way back in if you lose the phone or clear browser data — without it, a cleared `deviceId` means the notes are unreachable.
+
+**Search.** A search box appears once a list passes five notes and filters on the title.
+
+**Order.** Dated notes are always sorted by time. Undated ones can be moved up and down from the edit sheet.
+
+**Moving a note.** The edit sheet takes another list's recovery code and moves that single note there.
+
+## Offline
+
+The service worker caches the app shell and the last `/api/todos` response. Opening the app without a connection shows that saved list with a banner. Other API calls fail as usual, so nothing is written while offline. Bump `CACHE` in `public/sw.js` when the shell changes.
+
+## Housekeeping
+
+Once a day at 03:17 UTC the cron also deletes devices unseen for 180 days, then any list and note left without a device.
+
 ## Known limits
 
 - On iPhone, notifications require Safari → Share → **Add to Home Screen** (iOS 16.4+).
-- Notes are tied to the device (there is no login system).
+- Notes are tied to the device (there is no login system); the recovery code is the only way back to them.
 - The cron sends at most 40 notifications per minute (free-plan request limit).

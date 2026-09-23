@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "not-app",
+  "name": "reminder-app",
   "main": "worker/index.ts",
   "compatibility_date": "2026-09-01",
   "assets": {
@@ -10,8 +10,8 @@
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "not-app-db",
-      "database_id": "e64cd92c-bc71-4692-b331-a0e3e997228b",
+      "database_name": "reminder-app-db",
+      "database_id": "1b0057ca-9a23-4c52-ae43-3024cdcf1035",
       "migrations_dir": "migrations"
     }
   ],
@@ -21,7 +21,7 @@
   },
   "vars": {
     "VAPID_PUBLIC_KEY": "BCtfbIHH_zDeuaKf-8Cjdm5-CblPjcpnh5_Q1nM7K9YBwyEewNox5AEiornbnWaq_jGgK8DpHAVMT1wdCyFpL5Q",
-    "VAPID_SUBJECT": "https://not-app.armanalis.workers.dev"
+    "VAPID_SUBJECT": "https://reminder-app.armanalis.workers.dev"
   },
   "observability": {
     "enabled": true

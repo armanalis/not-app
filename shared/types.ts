@@ -6,6 +6,8 @@ export type Todo = {
   deadline: number | null;
   repeat: Repeat;
   done: boolean;
+  /** Elle sıralama; yalnızca tarihsiz notlarda görünür etkisi var. */
+  sortOrder: number;
   /** Kullanıcının seçtiği ilk bildirim anı; yoksa kademeli kural. */
   notifyAt: number | null;
   /** Sabit tekrar aralığı (saat); yoksa kademeli kural. */

@@ -66,6 +66,7 @@ export type TodoPatch = {
   repeat?: Repeat;
   done?: boolean;
   snoozeMinutes?: number;
+  move?: "up" | "down";
   notifyAt?: number | null;
   notifyEveryHours?: number | null;
 };
@@ -103,4 +104,14 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ code }),
     }),
+  recoveryCode: () => request<{ code: string }>("/api/recovery", { method: "POST" }),
+  recoveryUse: (code: string) =>
+    request<{ settings: ListSettings; todos: Todo[] }>("/api/recovery/use", {
+      method: "POST",
+      body: JSON.stringify({ code }),
+    }),
+  reorder: (id: string, move: "up" | "down") =>
+    request<{ todos: Todo[] }>(`/api/todos/${id}`, { method: "PATCH", body: JSON.stringify({ move }) }),
+  moveToList: (id: string, code: string) =>
+    request<{ todos: Todo[] }>(`/api/todos/${id}/move`, { method: "POST", body: JSON.stringify({ code }) }),
 };

@@ -1,4 +1,5 @@
 import {
+  HOUR,
   MINUTE,
   catchUpOccurrence,
   nextNotifyAt,
@@ -20,6 +21,8 @@ const PUSH_BATCH = 40;
 const MAX_TODOS_PER_LIST = 300;
 const MAX_TITLE = 200;
 const PAIR_CODE_TTL = 10 * MINUTE;
+/** Bu süredir açılmamış cihazlar ve sahipsiz listeler silinir. */
+const STALE_DEVICE_MS = 180 * 24 * HOUR;
 
 type TodoRow = {
   id: string;
@@ -27,6 +30,7 @@ type TodoRow = {
   deadline: number | null;
   repeat: string | null;
   done: number;
+  sort_order: number;
   notify_at: number | null;
   notify_every_h: number | null;
   next_notify_at: number | null;
@@ -37,6 +41,25 @@ const json = (data: unknown, status = 200) =>
   new Response(JSON.stringify(data), { status, headers: { "content-type": "application/json" } });
 
 const newId = () => crypto.randomUUID().replaceAll("-", "");
+
+/** Kalıcı kurtarma kodu: 16 hex, okunurluk için dörtlü gruplanır. */
+const newRecoveryCode = () => newId().slice(0, 16);
+const formatRecoveryCode = (code: string) => (code.match(/.{1,4}/g) ?? []).join("-").toUpperCase();
+const parseRecoveryCode = (v: unknown) => {
+  const raw = typeof v === "string" ? v.replace(/[\s-]/g, "").toLowerCase() : "";
+  return /^[a-f0-9]{16}$/.test(raw) ? raw : null;
+};
+
+/** Cihazı hedef listeye taşır; eski listesi boş kalırsa siler. */
+async function moveDeviceToList(env: Env, deviceId: string, fromListId: string, toListId: string) {
+  await env.DB.batch([
+    env.DB.prepare("UPDATE todos SET list_id = ? WHERE list_id = ?").bind(toListId, fromListId),
+    env.DB.prepare("UPDATE devices SET list_id = ? WHERE id = ?").bind(toListId, deviceId),
+    env.DB.prepare(
+      "DELETE FROM lists WHERE id = ? AND NOT EXISTS (SELECT 1 FROM devices WHERE list_id = ? AND id != ?)",
+    ).bind(fromListId, fromListId, deviceId),
+  ]);
+}
 
 const parseRepeat = (v: unknown): Repeat | undefined => {
   if (v === null || v === undefined) return null;
@@ -49,6 +72,7 @@ const toTodo = (r: TodoRow): Todo => ({
   deadline: r.deadline,
   repeat: (r.repeat as Repeat) ?? null,
   done: r.done === 1,
+  sortOrder: r.sort_order,
   notifyAt: r.notify_at,
   notifyEveryHours: r.notify_every_h,
   nextNotifyAt: r.done === 1 ? null : r.next_notify_at,
@@ -120,7 +144,7 @@ async function getTodo(env: Env, listId: string, id: string) {
 
 const listTodos = async (env: Env, listId: string) => {
   const { results } = await env.DB.prepare(
-    "SELECT * FROM todos WHERE list_id = ? ORDER BY done, COALESCE(deadline, 9e15), created_at",
+    "SELECT * FROM todos WHERE list_id = ? ORDER BY done, COALESCE(deadline, 9e15), sort_order, created_at",
   )
     .bind(listId)
     .all<TodoRow>();
@@ -230,20 +254,49 @@ async function handleApi(req: Request, env: Env, url: URL): Promise<Response> {
     const { listId: oldListId } = await ensureDevice(env, deviceId);
     if (row.list_id === oldListId) return json({ error: t(lang, "errAlreadyPaired") }, 400);
 
-    await env.DB.batch([
-      // Cihazın mevcut notlarını yeni listeye taşı.
-      env.DB.prepare("UPDATE todos SET list_id = ? WHERE list_id = ?").bind(row.list_id, oldListId),
-      env.DB.prepare("UPDATE devices SET list_id = ? WHERE id = ?").bind(row.list_id, deviceId),
-      env.DB.prepare("DELETE FROM pair_codes WHERE code = ?").bind(code),
-      env.DB.prepare(
-        "DELETE FROM lists WHERE id = ? AND NOT EXISTS (SELECT 1 FROM devices WHERE list_id = ? AND id != ?)",
-      ).bind(oldListId, oldListId, deviceId),
-    ]);
+    await moveDeviceToList(env, deviceId, oldListId, row.list_id);
+    await env.DB.prepare("DELETE FROM pair_codes WHERE code = ?").bind(code).run();
     const list = await env.DB.prepare("SELECT * FROM lists WHERE id = ?").bind(row.list_id).first<ListRow>();
     return json({
       ok: true,
       settings: settingsPayload(list ? rowToSettings(list) : normalizeSettings({})),
       todos: await listTodos(env, row.list_id),
+    });
+  }
+
+  // Kurtarma kodu: cihazı kaybedince listeye dönmek için kalıcı kod.
+  if (path === "/api/recovery" && req.method === "POST") {
+    const { listId } = await ensureDevice(env, deviceId);
+    const row = await env.DB.prepare("SELECT recovery_code FROM lists WHERE id = ?")
+      .bind(listId)
+      .first<{ recovery_code: string | null }>();
+    let code = row?.recovery_code ?? null;
+    if (!code) {
+      code = newRecoveryCode();
+      await env.DB.prepare("UPDATE lists SET recovery_code = ? WHERE id = ?").bind(code, listId).run();
+    }
+    return json({ code: formatRecoveryCode(code) });
+  }
+
+  if (path === "/api/recovery/use" && req.method === "POST") {
+    const body = (await req.json().catch(() => ({}))) as { code?: unknown };
+    const code = parseRecoveryCode(body.code);
+    if (!code) return json({ error: t(lang, "errRecoveryFormat") }, 400);
+
+    const target = await env.DB.prepare("SELECT id FROM lists WHERE recovery_code = ?")
+      .bind(code)
+      .first<{ id: string }>();
+    if (!target) return json({ error: t(lang, "errRecoveryInvalid") }, 400);
+
+    const { listId: oldListId } = await ensureDevice(env, deviceId);
+    if (target.id === oldListId) return json({ error: t(lang, "errAlreadyPaired") }, 400);
+
+    await moveDeviceToList(env, deviceId, oldListId, target.id);
+    const list = await env.DB.prepare("SELECT * FROM lists WHERE id = ?").bind(target.id).first<ListRow>();
+    return json({
+      ok: true,
+      settings: settingsPayload(list ? rowToSettings(list) : normalizeSettings({})),
+      todos: await listTodos(env, target.id),
     });
   }
 
@@ -302,9 +355,12 @@ async function handleApi(req: Request, env: Env, url: URL): Promise<Response> {
     const now = Date.now();
     const id = newId();
     const rule = { notifyAt, everyHours };
+    const last = await env.DB.prepare("SELECT MAX(sort_order) AS n FROM todos WHERE list_id = ?")
+      .bind(listId)
+      .first<{ n: number | null }>();
     await env.DB.prepare(
-      `INSERT INTO todos (id, device_id, list_id, title, deadline, repeat, done, notify_at, notify_every_h, next_notify_at, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)`,
+      `INSERT INTO todos (id, device_id, list_id, title, deadline, repeat, done, notify_at, notify_every_h, next_notify_at, sort_order, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)`,
     )
       .bind(
         id,
@@ -316,10 +372,37 @@ async function handleApi(req: Request, env: Env, url: URL): Promise<Response> {
         notifyAt,
         everyHours,
         nextNotifyAt(deadline, now, settings, rule),
+        (last?.n ?? 0) + 1,
         now,
       )
       .run();
     return json(await getTodo(env, listId, id), 201);
+  }
+
+  // Tek bir notu başka bir listeye taşı (hedef listenin kurtarma kodu ile).
+  const moveMatch = path.match(/^\/api\/todos\/([a-f0-9]{32})\/move$/);
+  if (moveMatch && req.method === "POST") {
+    const body = (await req.json().catch(() => ({}))) as { code?: unknown };
+    const code = parseRecoveryCode(body.code);
+    if (!code) return json({ error: t(lang, "errRecoveryFormat") }, 400);
+
+    const { listId } = await ensureDevice(env, deviceId);
+    const existing = await getTodo(env, listId, moveMatch[1]);
+    if (!existing) return json({ error: t(lang, "errNotFound") }, 404);
+
+    const target = await env.DB.prepare("SELECT id FROM lists WHERE recovery_code = ?")
+      .bind(code)
+      .first<{ id: string }>();
+    if (!target) return json({ error: t(lang, "errRecoveryInvalid") }, 400);
+    if (target.id === listId) return json({ error: t(lang, "errMoveSameList") }, 400);
+
+    const last = await env.DB.prepare("SELECT MAX(sort_order) AS n FROM todos WHERE list_id = ?")
+      .bind(target.id)
+      .first<{ n: number | null }>();
+    await env.DB.prepare("UPDATE todos SET list_id = ?, sort_order = ? WHERE id = ? AND list_id = ?")
+      .bind(target.id, (last?.n ?? 0) + 1, moveMatch[1], listId)
+      .run();
+    return json({ ok: true, todos: await listTodos(env, listId) });
   }
 
   const match = path.match(/^\/api\/todos\/([a-f0-9]{32})$/);
@@ -341,10 +424,30 @@ async function handleApi(req: Request, env: Env, url: URL): Promise<Response> {
         repeat?: unknown;
         done?: unknown;
         snoozeMinutes?: unknown;
+        move?: unknown;
         notifyAt?: unknown;
         notifyEveryHours?: unknown;
       };
       const now = Date.now();
+
+      // Elle sıralama: tarihsiz notlar arasında komşusuyla yer değiştirir.
+      if (body.move === "up" || body.move === "down") {
+        if (existing.deadline !== null) return json({ error: t(lang, "errMoveNeedsUndated") }, 400);
+        const neighbour = await env.DB.prepare(
+          `SELECT id, sort_order FROM todos
+           WHERE list_id = ? AND done = 0 AND deadline IS NULL AND sort_order ${body.move === "up" ? "<" : ">"} ?
+           ORDER BY sort_order ${body.move === "up" ? "DESC" : "ASC"} LIMIT 1`,
+        )
+          .bind(listId, existing.sortOrder)
+          .first<{ id: string; sort_order: number }>();
+        if (neighbour) {
+          await env.DB.batch([
+            env.DB.prepare("UPDATE todos SET sort_order = ? WHERE id = ?").bind(neighbour.sort_order, id),
+            env.DB.prepare("UPDATE todos SET sort_order = ? WHERE id = ?").bind(existing.sortOrder, neighbour.id),
+          ]);
+        }
+        return json({ todos: await listTodos(env, listId) });
+      }
 
       // Erteleme: sadece bir sonraki bildirimi öteler.
       if (typeof body.snoozeMinutes === "number" && body.snoozeMinutes > 0) {
@@ -472,6 +575,19 @@ async function sendDueReminders(env: Env) {
   console.log(`reminders: ${due.length} todos, ${sentCount} pushes, ${goneDevices.size} expired devices`);
 }
 
+/** Terk edilmiş cihazları, sahipsiz listeleri ve notlarını siler. Günde bir çalışır. */
+export async function cleanUp(env: Env) {
+  const cutoff = Date.now() - STALE_DEVICE_MS;
+  const results = await env.DB.batch([
+    env.DB.prepare("DELETE FROM devices WHERE last_seen_at < ?").bind(cutoff),
+    // Listeye bağlı cihaz kalmadıysa liste de notları da gider.
+    env.DB.prepare("DELETE FROM todos WHERE list_id NOT IN (SELECT list_id FROM devices WHERE list_id IS NOT NULL)"),
+    env.DB.prepare("DELETE FROM lists WHERE id NOT IN (SELECT list_id FROM devices WHERE list_id IS NOT NULL)"),
+    env.DB.prepare("DELETE FROM pair_codes WHERE expires_at < ?").bind(Date.now()),
+  ]);
+  console.log(`cleanup: ${results.map((r) => r.meta.changes ?? 0).join("/")} devices/todos/lists/codes`);
+}
+
 export default {
   async fetch(req, env) {
     const url = new URL(req.url);
@@ -486,7 +602,10 @@ export default {
     return new Response(null, { status: 404 });
   },
 
-  async scheduled(_controller, env, ctx) {
+  async scheduled(controller, env, ctx) {
     ctx.waitUntil(sendDueReminders(env));
+    // Temizlik günde bir yeter; her dakikaki cron'u meşgul etmesin.
+    const utcMinutes = new Date(controller.scheduledTime).getUTCHours() * 60 + new Date(controller.scheduledTime).getUTCMinutes();
+    if (utcMinutes === 3 * 60 + 17) ctx.waitUntil(cleanUp(env));
   },
 } satisfies ExportedHandler<Env>;

@@ -269,6 +269,7 @@ button {
 
 .date-input,
 .pair-input,
+.search-input,
 .sheet-input,
 select {
   background: transparent;
@@ -281,6 +282,7 @@ select {
 
 .date-input:focus,
 .pair-input:focus,
+.search-input:focus,
 .sheet-input:focus,
 select:focus {
   border-color: var(--accent);
@@ -613,6 +615,25 @@ select:focus {
   flex: 1;
   min-width: 0;
   letter-spacing: 0.3em;
+}
+
+.search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 14px;
+}
+
+.search-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.recovery-code {
+  font-size: 17px;
+  letter-spacing: 0.1em;
+  font-variant-numeric: tabular-nums;
+  word-break: break-all;
 }
 
 .pair-code {

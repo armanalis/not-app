@@ -44,6 +44,8 @@ export default function App() {
   const [now, setNow] = useState(Date.now());
   const [pushState, setPushState] = useState<PushState>("loading");
   const [sheet, setSheet] = useState<Sheet>(null);
+  const [query, setQuery] = useState("");
+  const [online, setOnline] = useState(() => navigator.onLine);
   const [lang, setLangState] = useState<Lang>(getLang);
   const [theme, setThemeState] = useState<Theme>(getTheme);
   const tz = useMemo(timeZone, []);
@@ -66,6 +68,16 @@ export default function App() {
   useEffect(() => {
     applyTheme(theme);
   }, [theme]);
+
+  useEffect(() => {
+    const sync = () => setOnline(navigator.onLine);
+    window.addEventListener("online", sync);
+    window.addEventListener("offline", sync);
+    return () => {
+      window.removeEventListener("online", sync);
+      window.removeEventListener("offline", sync);
+    };
+  }, []);
 
   useEffect(() => {
     const state = currentPushState();
@@ -107,16 +119,25 @@ export default function App() {
     }
   };
 
-  const active = (todos ?? []).filter((x) => !x.done);
-  const done = (todos ?? []).filter((x) => x.done);
+  const q = query.trim().toLowerCase();
+  const matches = (x: Todo) => q === "" || x.title.toLowerCase().includes(q);
+  const all = todos ?? [];
+  const active = all.filter((x) => !x.done && matches(x));
+  const done = all.filter((x) => x.done && matches(x));
   const groups = groupByDay(active, now, tz, t);
   const overdue = active.filter((x) => x.deadline !== null && x.deadline <= now).length;
+  const noMatch = q !== "" && active.length === 0 && done.length === 0;
 
   const patch = (id: string, p: TodoPatch) =>
     run(async () => {
       const updated = await api.update(id, p);
       setTodos((prev) => (prev ?? []).map((x) => (x.id === updated.id ? updated : x)));
       setSheet((s) => (s?.kind === "edit" && s.todo.id === updated.id ? { kind: "edit", todo: updated } : s));
+    });
+
+  const reorder = (id: string, move: "up" | "down") =>
+    run(async () => {
+      setTodos((await api.reorder(id, move)).todos);
     });
 
   const remove = (id: string) =>
@@ -166,6 +187,26 @@ export default function App() {
         }
       />
 
+      {!online && <p className="notice">{t("offline")}</p>}
+
+      {all.length > 5 && (
+        <div className="search">
+          <input
+            className="search-input"
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder={t("searchPlaceholder")}
+            aria-label={t("searchAria")}
+          />
+          {query !== "" && (
+            <button className="icon-btn" onClick={() => setQuery("")} aria-label={t("searchClear")}>
+              ×
+            </button>
+          )}
+        </div>
+      )}
+
       {notice && !error && <p className="notice">{notice}</p>}
       {error && (
         <p className="error" role="alert">
@@ -173,7 +214,8 @@ export default function App() {
         </p>
       )}
 
-      {todos !== null && active.length === 0 && <p className="empty">{t("emptyHint")}</p>}
+      {noMatch && <p className="empty">{t("searchNone", { q: query.trim() })}</p>}
+      {todos !== null && q === "" && active.length === 0 && <p className="empty">{t("emptyHint")}</p>}
 
       {groups.map(([label, items]) => (
         <section className="group" key={label}>
@@ -225,6 +267,14 @@ export default function App() {
             t={t}
             onPatch={(p) => patch(sheet.todo.id, p)}
             onDelete={() => remove(sheet.todo.id)}
+            onReorder={(move) => reorder(sheet.todo.id, move)}
+            onMoveToList={(code) =>
+              run(async () => {
+                setTodos((await api.moveToList(sheet.todo.id, code)).todos);
+                setNotice(t("moveListOk"));
+                setSheet(null);
+              })
+            }
             onClose={() => setSheet(null)}
           />
         </SheetShell>
@@ -625,6 +675,8 @@ function EditSheet({
   t,
   onPatch,
   onDelete,
+  onReorder,
+  onMoveToList,
   onClose,
 }: {
   todo: Todo;
@@ -634,6 +686,8 @@ function EditSheet({
   t: T;
   onPatch: (p: TodoPatch) => Promise<void>;
   onDelete: () => void;
+  onReorder: (move: "up" | "down") => Promise<void>;
+  onMoveToList: (code: string) => Promise<void>;
   onClose: () => void;
 }) {
   const [title, setTitle] = useState(todo.title);
@@ -642,6 +696,7 @@ function EditSheet({
   const [notifyAt, setNotifyAt] = useState<number | null>(todo.notifyAt);
   const [everyHours, setEveryHours] = useState<number | null>(todo.notifyEveryHours);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [moveCode, setMoveCode] = useState("");
 
   const changed =
     title.trim() !== todo.title ||
@@ -707,6 +762,39 @@ function EditSheet({
         </>
       )}
 
+      {todo.deadline === null && !todo.done && (
+        <>
+          <span className="field-label">{t("orderLabel")}</span>
+          <div className="chips">
+            <button type="button" className="chip" onClick={() => onReorder("up")}>
+              ↑&nbsp;{t("moveUp")}
+            </button>
+            <button type="button" className="chip" onClick={() => onReorder("down")}>
+              ↓&nbsp;{t("moveDown")}
+            </button>
+          </div>
+        </>
+      )}
+
+      <span className="field-label">{t("moveListLabel")}</span>
+      <div className="pair">
+        <input
+          className="pair-input"
+          value={moveCode}
+          onChange={(e) => setMoveCode(e.target.value)}
+          placeholder="XXXX-XXXX-XXXX-XXXX"
+          aria-label={t("recoveryAria")}
+        />
+        <button
+          className="ghost"
+          disabled={moveCode.replace(/[\s-]/g, "").length !== 16}
+          onClick={() => onMoveToList(moveCode)}
+        >
+          {t("moveListBtn")}
+        </button>
+      </div>
+      <p className="hint">{t("moveListHint")}</p>
+
       <div className="sheet-actions">
         {confirmDelete ? (
           <button className="danger" onClick={onDelete}>
@@ -761,6 +849,16 @@ function SettingsSheet({
 }) {
   const [code, setCode] = useState<{ code: string; expiresAt: number } | null>(null);
   const [input, setInput] = useState("");
+  const [recovery, setRecovery] = useState<string | null>(null);
+  const [restore, setRestore] = useState("");
+  /** Panel içi çağrılar hatayı üst bileşene taşır. */
+  const run = async (fn: () => Promise<unknown>) => {
+    try {
+      await fn();
+    } catch (err) {
+      onError((err as Error).message);
+    }
+  };
   const quietOn = settings.quietStart !== settings.quietEnd;
   const hours = Array.from({ length: 24 }, (_, i) => i);
   const intensities: Intensity[] = ["calm", "normal", "insistent"];
@@ -882,6 +980,34 @@ function SettingsSheet({
           {t("connect")}
         </button>
       </div>
+
+      <span className="field-label">{t("recoveryLabel")}</span>
+      <div className="pair">
+        <button className="ghost" onClick={() => run(async () => setRecovery((await api.recoveryCode()).code))}>
+          {t("recoveryShow")}
+        </button>
+        {recovery && <strong className="recovery-code">{recovery}</strong>}
+      </div>
+      <p className="hint">{t("recoveryHint")}</p>
+
+      <span className="field-label">{t("recoveryUseLabel")}</span>
+      <div className="pair">
+        <input
+          className="pair-input"
+          placeholder="XXXX-XXXX-XXXX-XXXX"
+          value={restore}
+          onChange={(e) => setRestore(e.target.value)}
+          aria-label={t("recoveryAria")}
+        />
+        <button
+          className="ghost"
+          disabled={restore.replace(/[\s-]/g, "").length !== 16}
+          onClick={() => run(async () => onPaired(await api.recoveryUse(restore)))}
+        >
+          {t("recoveryRestore")}
+        </button>
+      </div>
+      <p className="hint">{t("recoveryUseHint")}</p>
 
       {pushState === "granted" && (
         <div className="sheet-actions">

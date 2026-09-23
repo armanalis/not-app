@@ -1,5 +1,5 @@
 {
-  "name": "not-app",
+  "name": "reminder-app",
   "private": true,
   "version": "0.1.0",
   "type": "module",
@@ -21,6 +21,7 @@
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "^1.54.10",
+    "@types/node": "^26.6.2",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
     "@vitejs/plugin-react": "^6.1.1",
